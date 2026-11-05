@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import type { ProductItem, EquipmentItem, SiteSettings } from '../types';
+import type { ProductItem, EquipmentItem, SiteSettings, EstimateCartItem } from '../types';
+import { SlabVolume3D } from './Isometric3DVisuals';
 
 interface CalculatorSectionProps {
   products: ProductItem[];
   equipment: EquipmentItem[];
   settings: SiteSettings;
+  onAddToCart: (item: EstimateCartItem) => void;
   onSubmitCalculation: (selectedTitle: string, summaryText: string) => void;
 }
 
@@ -12,6 +14,7 @@ export const CalculatorSection: React.FC<CalculatorSectionProps> = ({
   products,
   equipment,
   settings,
+  onAddToCart,
   onSubmitCalculation,
 }) => {
   const activeProducts = useMemo(() => products.filter((p) => p.inStock), [products]);
@@ -23,6 +26,7 @@ export const CalculatorSection: React.FC<CalculatorSectionProps> = ({
   const [distanceKm, setDistanceKm] = useState<number>(10);
   const [selectedEquipmentId, setSelectedEquipmentId] = useState<string>('none');
   const [equipmentHours, setEquipmentHours] = useState<number>(4);
+  const [addedNotice, setAddedNotice] = useState<boolean>(false);
 
   // Помощник расчета кубатуры по габаритам (Длина x Ширина x Высота)
   const [showDimensionHelper, setShowDimensionHelper] = useState<boolean>(false);
@@ -47,8 +51,9 @@ export const CalculatorSection: React.FC<CalculatorSectionProps> = ({
     return selectedProduct.priceGravel;
   }, [selectedProduct, filler]);
 
+  const isFbs = selectedProduct?.category === 'fbs';
   const materialTotal = Math.round(unitPrice * volume);
-  const tripsCount = Math.max(1, Math.ceil(volume / 9)); // Расчет по миксерам ~9 м³
+  const tripsCount = isFbs ? Math.max(1, Math.ceil(volume / 15)) : Math.max(1, Math.ceil(volume / 9));
   const singleTripDelivery = settings.deliveryBasePrice + distanceKm * settings.deliveryPricePerKm;
   const deliveryTotal = Math.round(singleTripDelivery * tripsCount);
 
@@ -75,44 +80,94 @@ export const CalculatorSection: React.FC<CalculatorSectionProps> = ({
         ? filler === 'granite'
           ? 'на граните'
           : 'на гравии'
-        : 'цементно-песчаный';
+        : isFbs
+          ? 'ЖБИ ГОСТ 13579-2018'
+          : 'цементно-песчаный';
 
     const eqText = selectedEquipment
       ? `, Спецтехника: ${selectedEquipment.name} (${Math.max(selectedEquipment.minHours, equipmentHours)} ч = ${equipmentTotal.toLocaleString('ru-RU')} ₽)`
       : '';
 
-    const summary = `Смесь: ${selectedProduct.name} (${fillerText}) × ${volume} м³ (${materialTotal.toLocaleString('ru-RU')} ₽) + Доставка ${distanceKm} км (${tripsCount} рейс., ${deliveryTotal.toLocaleString('ru-RU')} ₽)${eqText}. Итого ориентировочно: ${grandTotal.toLocaleString('ru-RU')} ₽`;
+    const summary = `Позиция: ${selectedProduct.name} (${fillerText}) × ${volume} ${selectedProduct.unit} (${materialTotal.toLocaleString('ru-RU')} ₽) + Доставка ${distanceKm} км (${tripsCount} рейс., ${deliveryTotal.toLocaleString('ru-RU')} ₽)${eqText}. Итого ориентировочно: ${grandTotal.toLocaleString('ru-RU')} ₽`;
 
-    onSubmitCalculation(`${selectedProduct.name} — ${volume} м³`, summary);
+    onSubmitCalculation(`${selectedProduct.name} — ${volume} ${selectedProduct.unit}`, summary);
+  };
+
+  const handleAddCalculationToCart = () => {
+    if (!selectedProduct) return;
+    const fillerLabel =
+      selectedProduct.category === 'concrete'
+        ? filler === 'granite'
+          ? 'Гранитный щебень'
+          : 'Гравийный щебень'
+        : isFbs
+          ? 'ГОСТ 13579-2018'
+          : 'Цементно-песчаный';
+
+    onAddToCart({
+      id: selectedProduct.category === 'concrete' ? `${selectedProduct.id}-${filler}` : selectedProduct.id,
+      title:
+        selectedProduct.category === 'concrete'
+          ? `${selectedProduct.name} (${fillerLabel})`
+          : selectedProduct.name,
+      categoryLabel: 'Из калькулятора',
+      unit: selectedProduct.unit,
+      quantity: volume,
+      unitPrice,
+    });
+
+    onAddToCart({
+      id: `delivery-${distanceKm}km`,
+      title: `Доставка (${distanceKm} км от РБУ)`,
+      categoryLabel: 'Логистика завода',
+      unit: 'рейс',
+      quantity: tripsCount,
+      unitPrice: singleTripDelivery,
+    });
+
+    if (selectedEquipment) {
+      onAddToCart({
+        id: `eq-${selectedEquipment.id}`,
+        title: `Аренда: ${selectedEquipment.name}`,
+        categoryLabel: 'Спецтехника с экипажем',
+        unit: 'ч',
+        quantity: Math.max(selectedEquipment.minHours, equipmentHours),
+        unitPrice: selectedEquipment.pricePerHour,
+      });
+    }
+
+    setAddedNotice(true);
+    setTimeout(() => setAddedNotice(false), 2500);
   };
 
   return (
     <section id="calculator" className="py-14 border-b border-slate-200">
       <div className="max-w-[1200px] mx-auto px-6">
-        <div className="mb-8">
-          <h2 className="text-2xl md:text-3xl font-bold text-slate-900 font-display tracking-tight">
-            03. Расчет стоимости бетона, доставки по Ульяновску и спецтехники за 1 минуту
+        <div className="mb-10">
+          <h2 className="heading-section text-slate-900">
+            02. Калькулятор бетона, растворов, ФБС и доставки
           </h2>
-          <p className="text-sm text-slate-600 mt-2 max-w-2xl">
-            Узнайте честную смету с учетом кубатуры, плеча доставки от РБУ по Ульяновску или
-            области и смены спецтехники. Отправьте расчет диспетчеру для фиксации цены и времени подачи.
+          <p className="text-sm text-slate-600 mt-2.5 max-w-2xl leading-relaxed">
+            Рассчитайте смету с учетом кубатуры, плеча доставки по Ульяновску или области и смены
+            спецтехники. Готовый расчет можно сразу отправить диспетчеру или добавить в общую
+            сборную заявку.
           </p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Панель параметров расчета */}
           <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 space-y-6">
-            {/* 1. Выбор марки бетона или раствора */}
+            {/* 1. Выбор марки бетона, раствора или ФБС */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-2">
-                1. Выберите марку бетона или раствора
+                1. Выберите бетон, раствор или блоки ФБС
               </label>
               <select
                 value={selectedProductId}
                 onChange={(e) => setSelectedProductId(e.target.value)}
                 className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-slate-900"
               >
-                <optgroup label="Товарный бетон">
+                <optgroup label="Товарный бетон М100–М400">
                   {activeProducts
                     .filter((p) => p.category === 'concrete')
                     .map((p) => (
@@ -127,6 +182,15 @@ export const CalculatorSection: React.FC<CalculatorSectionProps> = ({
                     .map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name} — от {p.priceGravel.toLocaleString('ru-RU')} ₽/м³
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label="Фундаментные блоки ФБС">
+                  {activeProducts
+                    .filter((p) => p.category === 'fbs')
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} — {p.priceGravel.toLocaleString('ru-RU')} ₽/шт.
                       </option>
                     ))}
                 </optgroup>
@@ -170,24 +234,26 @@ export const CalculatorSection: React.FC<CalculatorSectionProps> = ({
               </div>
             )}
 
-            {/* 3. Объем смеси в кубах */}
+            {/* 3. Объем смеси в кубах или количество блоков */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-semibold text-slate-700">
-                  3. Требуемый объем смеси (м³)
+                  3. Требуемое количество ({selectedProduct?.unit || 'м³'})
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setShowDimensionHelper(!showDimensionHelper)}
-                  className="text-xs font-medium text-orange-600 hover:underline cursor-pointer"
-                >
-                  {showDimensionHelper
-                    ? 'Скрыть расчет по размерам плиты'
-                    : 'Рассчитать объем по Длина × Ширина × Высота'}
-                </button>
+                {!isFbs && (
+                  <button
+                    type="button"
+                    onClick={() => setShowDimensionHelper(!showDimensionHelper)}
+                    className="text-xs font-medium text-orange-600 hover:underline cursor-pointer"
+                  >
+                    {showDimensionHelper
+                      ? 'Скрыть расчет по размерам плиты'
+                      : 'Рассчитать объем по Длина × Ширина × Высота'}
+                  </button>
+                )}
               </div>
 
-              {showDimensionHelper && (
+              {showDimensionHelper && !isFbs && (
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg mb-3">
                   <div className="grid grid-cols-3 gap-3 mb-3">
                     <div>
@@ -256,7 +322,7 @@ export const CalculatorSection: React.FC<CalculatorSectionProps> = ({
                   type="number"
                   min="1"
                   max="1000"
-                  step="0.5"
+                  step={isFbs ? '1' : '0.5'}
                   value={volume}
                   onChange={(e) => setVolume(Math.max(1, Number(e.target.value)))}
                   className="w-24 px-3 py-2 text-sm font-bold text-right bg-slate-50 border border-slate-300 rounded-lg font-num"
@@ -268,7 +334,7 @@ export const CalculatorSection: React.FC<CalculatorSectionProps> = ({
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-semibold text-slate-700">
-                  4. Расстояние доставки от завода (км)
+                  4. Расстояние доставки по Ульяновску / области (км)
                 </label>
                 <span className="text-xs font-bold text-slate-900 font-num">{distanceKm} км</span>
               </div>
@@ -282,8 +348,8 @@ export const CalculatorSection: React.FC<CalculatorSectionProps> = ({
                 className="w-full accent-orange-600 cursor-pointer"
               />
               <div className="flex justify-between text-[11px] text-slate-400 mt-1 font-num">
-                <span>По городу (до 15 км — подача 30–60 мин)</span>
-                <span>Пригород (15–80 км)</span>
+                <span>По Ульяновску (до 15 км — подача 30–60 мин)</span>
+                <span>Пригород и область (15–80 км)</span>
               </div>
             </div>
 
@@ -298,7 +364,7 @@ export const CalculatorSection: React.FC<CalculatorSectionProps> = ({
                   onChange={(e) => setSelectedEquipmentId(e.target.value)}
                   className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg text-slate-900"
                 >
-                  <option value="none">Без спецтехники (только миксер)</option>
+                  <option value="none">Без спецтехники (только доставка)</option>
                   {equipment
                     .filter((e) => e.available)
                     .map((eq) => (
@@ -334,18 +400,22 @@ export const CalculatorSection: React.FC<CalculatorSectionProps> = ({
             <div>
               <div className="text-xs text-slate-400 mb-1">Предварительный расчет заказа</div>
               <h3 className="text-xl font-bold font-display mb-5">
-                {selectedProduct?.name} · {volume} м³
+                {selectedProduct?.name} · {volume} {selectedProduct?.unit}
               </h3>
 
               <div className="space-y-3 text-sm border-t border-slate-800 pt-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-300">Цена за 1 м³ смеси:</span>
+                  <span className="text-slate-300">
+                    Цена за 1 {selectedProduct?.unit}:
+                  </span>
                   <span className="font-semibold font-num">
                     {unitPrice.toLocaleString('ru-RU')} ₽
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-300">Стоимость смеси ({volume} м³):</span>
+                  <span className="text-slate-300">
+                    Стоимость материала ({volume} {selectedProduct?.unit}):
+                  </span>
                   <span className="font-semibold font-num">
                     {materialTotal.toLocaleString('ru-RU')} ₽
                   </span>
@@ -371,25 +441,42 @@ export const CalculatorSection: React.FC<CalculatorSectionProps> = ({
                 )}
               </div>
 
-              <div className="my-6 pt-5 border-t border-slate-800 flex items-baseline justify-between">
+              <div className="my-5 pt-5 border-t border-slate-800 flex items-baseline justify-between">
                 <span className="text-sm text-slate-300">Ориентировочно итого:</span>
                 <span className="text-3xl font-bold text-white font-num">
                   {grandTotal.toLocaleString('ru-RU')} ₽
                 </span>
               </div>
+
+              <SlabVolume3D
+                volume={volume}
+                tripsCount={tripsCount}
+                filler={filler}
+              />
             </div>
 
-            <div>
+            <div className="mt-5 space-y-2.5">
               <button
                 type="button"
                 onClick={handleTransferToLead}
                 className="w-full py-3.5 px-5 text-sm font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors cursor-pointer"
               >
-                Отправить этот расчет на подтверждение
+                Отправить этот расчет сразу
               </button>
-              <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
+
+              <button
+                type="button"
+                onClick={handleAddCalculationToCart}
+                className="w-full py-2.5 px-5 text-xs font-semibold text-slate-200 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                {addedNotice
+                  ? '✓ Расчет добавлен в вашу сборную смету'
+                  : '+ Добавить этот расчет в сборную смету'}
+              </button>
+
+              <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
                 Расчет на калькуляторе является предварительным и не является публичной офертой (ст.
-                437 ГК РФ). Менеджер проверит подъездные пути и подтвердит точную цену.
+                437 ГК РФ).
               </p>
             </div>
           </div>

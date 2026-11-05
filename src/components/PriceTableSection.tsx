@@ -23,10 +23,10 @@ export const PriceTableSection: React.FC<PriceTableSectionProps> = ({
       <div className="max-w-[1200px] mx-auto px-6">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900 font-display tracking-tight">
-              Прайс-лист бетонного завода в Ульяновске (цены за 1 м³ с РБУ)
+            <h2 className="heading-section text-slate-900">
+              Прайс-лист РБУ в Ульяновске (цены за 1 м³)
             </h2>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-slate-500 mt-1.5">
               Прямые заводские цены без наценок перекупщиков. Отображение таблицы регулируется в 1 клик через админ-панель.
             </p>
           </div>

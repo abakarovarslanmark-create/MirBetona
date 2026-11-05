@@ -444,7 +444,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToSite, onDataUpda
                       const next = [...products];
                       next[idx] = {
                         ...prod,
-                        category: e.target.value as 'concrete' | 'mortar',
+                        category: e.target.value as 'concrete' | 'mortar' | 'fbs',
+                        unit: e.target.value === 'fbs' ? 'шт.' : 'м³',
                       };
                       setProducts(next);
                     }}
@@ -452,6 +453,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToSite, onDataUpda
                   >
                     <option value="concrete">Бетон</option>
                     <option value="mortar">Раствор</option>
+                    <option value="fbs">Блоки ФБС</option>
                   </select>
                 </div>
 

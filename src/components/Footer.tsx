@@ -4,7 +4,7 @@ import type { AppRoute } from '../seo';
 
 interface FooterProps {
   settings: SiteSettings;
-  onNavigate: (route: AppRoute) => void;
+  onNavigate: (route: AppRoute, sectionId?: string) => void;
   onOpenLegalModal: (docType: 'privacy' | 'consent' | 'offer') => void;
 }
 
@@ -32,7 +32,7 @@ export const Footer: React.FC<FooterProps> = ({
 
   return (
     <>
-      <footer className="bg-slate-900 text-slate-400 border-t border-slate-800">
+      <footer className="bg-slate-900 text-slate-400 border-t border-slate-800 pb-20">
         <div className="max-w-[1200px] mx-auto px-6 py-12">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8 pb-8 border-b border-slate-800">
             {/* Колонка 1: О заводе и реквизиты */}
@@ -41,9 +41,9 @@ export const Footer: React.FC<FooterProps> = ({
                 {settings.companyName}
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Производство и продажа товарного бетона, строительных растворов (мощность РБУ{' '}
-                {settings.plantCapacityM3PerHour} м³/час) и аренда спецтехники (АБН, автокран,
-                автовышка + манипулятор, экскаватор JCB).
+                Бетонный завод в Ульяновске (мощность РБУ {settings.plantCapacityM3PerHour} м³/час):
+                товарный бетон с доставкой, строительные растворы, блоки ФБС и аренда спецтехники
+                (экскаватор-погрузчик JCB, автовышка, манипулятор, автокран 25 т, АБН).
               </p>
               <div className="text-xs text-slate-500 pt-2 space-y-0.5 font-num">
                 <div>
@@ -53,43 +53,19 @@ export const Footer: React.FC<FooterProps> = ({
               </div>
             </div>
 
-            {/* Колонка 2: Разделы многостраничника (SEO-перелинковка) */}
+            {/* Колонка 2: Навигация по каталогу и странице спецтехники */}
             <div className="md:col-span-3 space-y-2 text-xs">
-              <div className="font-semibold text-white mb-2">Разделы сайта</div>
+              <div className="font-semibold text-white mb-2">Продукция и услуги</div>
               <div>
                 <a
-                  href="/"
+                  href="#catalog"
                   onClick={(e) => {
                     e.preventDefault();
-                    onNavigate('/');
+                    onNavigate('/', 'catalog');
                   }}
                   className="hover:text-white transition-colors"
                 >
-                  Главная страница
-                </a>
-              </div>
-              <div>
-                <a
-                  href="/beton"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onNavigate('/beton');
-                  }}
-                  className="hover:text-white transition-colors"
-                >
-                  Товарный бетон М100–М400
-                </a>
-              </div>
-              <div>
-                <a
-                  href="/rastvory"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onNavigate('/rastvory');
-                  }}
-                  className="hover:text-white transition-colors"
-                >
-                  Строительные и кладочные растворы
+                  Каталог: Бетон, Растворы, ФБС
                 </a>
               </div>
               <div>
@@ -101,31 +77,43 @@ export const Footer: React.FC<FooterProps> = ({
                   }}
                   className="hover:text-white transition-colors"
                 >
-                  Аренда спецтехники (АБН, Кран, JCB)
+                  Аренда спецтехники в Ульяновске
                 </a>
               </div>
               <div>
                 <a
-                  href="/calculator"
+                  href="#calculator"
                   onClick={(e) => {
                     e.preventDefault();
-                    onNavigate('/calculator');
+                    onNavigate('/', 'calculator');
                   }}
                   className="hover:text-white transition-colors"
                 >
-                  Калькулятор и прайс-лист
+                  Калькулятор объема и доставки
                 </a>
               </div>
               <div>
                 <a
-                  href="/dostavka"
+                  href="#pricelist"
                   onClick={(e) => {
                     e.preventDefault();
-                    onNavigate('/dostavka');
+                    onNavigate('/', 'pricelist');
                   }}
                   className="hover:text-white transition-colors"
                 >
-                  Доставка, лаборатория и ГОСТ
+                  Сводный прайс-лист
+                </a>
+              </div>
+              <div>
+                <a
+                  href="#quality"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigate('/', 'quality');
+                  }}
+                  className="hover:text-white transition-colors"
+                >
+                  Доставка за 30–60 мин и ГОСТ
                 </a>
               </div>
             </div>
@@ -187,7 +175,6 @@ export const Footer: React.FC<FooterProps> = ({
               </div>
               <div className="text-slate-400">Подача: {settings.cityDeliveryTime}</div>
 
-              {/* Разрешенные мессенджеры и соцсети (без запрещенных в РФ ресурсов Meta) */}
               <div className="flex flex-wrap items-center gap-2 pt-2">
                 <a
                   href={settings.telegramUrl}
@@ -231,7 +218,7 @@ export const Footer: React.FC<FooterProps> = ({
 
       {/* Ненавязчивое уведомление о Cookie */}
       {settings.showCookieBanner && !cookieAccepted && (
-        <div className="fixed bottom-4 right-4 left-4 md:left-auto md:max-w-md z-40 bg-slate-900 text-white border border-slate-700 rounded-xl p-4 shadow-lg flex items-center justify-between gap-4">
+        <div className="fixed bottom-4 right-4 left-4 md:left-auto md:max-w-md z-30 bg-slate-900 text-white border border-slate-700 rounded-xl p-4 shadow-lg flex items-center justify-between gap-4">
           <div className="text-xs text-slate-300 leading-relaxed">
             Сайт использует технические файлы cookie для работы калькулятора и веб-аналитики в
             соответствии с{' '}

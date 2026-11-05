@@ -1,4 +1,4 @@
-export type ProductCategory = 'concrete' | 'mortar';
+export type ProductCategory = 'concrete' | 'mortar' | 'fbs';
 
 export interface ProductItem {
   id: string;
@@ -29,6 +29,15 @@ export interface EquipmentItem {
   pricePerShift: number;
   imageUrl: string;
   available: boolean;
+}
+
+export interface EstimateCartItem {
+  id: string;
+  title: string;
+  categoryLabel: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
 }
 
 export type LeadSource = 'calculator' | 'catalog' | 'equipment' | 'contact';

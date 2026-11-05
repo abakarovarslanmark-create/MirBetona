@@ -4,7 +4,13 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import type { ProductItem, EquipmentItem, SiteSettings, LeadSource } from './types';
+import type {
+  ProductItem,
+  EquipmentItem,
+  SiteSettings,
+  LeadSource,
+  EstimateCartItem,
+} from './types';
 import { type AppRoute, SEO_ROUTES, normalizeRoute, applyClientSeoMeta } from './seo';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
@@ -17,6 +23,7 @@ import { LeadForm } from './components/LeadForm';
 import { LegalModal } from './components/LegalModals';
 import { Footer } from './components/Footer';
 import { AdminPanel } from './components/AdminPanel';
+import { EstimateCartBar } from './components/EstimateCartBar';
 
 const FALLBACK_SETTINGS: SiteSettings = {
   companyName: 'БетонПром 73',
@@ -45,6 +52,8 @@ const FALLBACK_SETTINGS: SiteSettings = {
   showCookieBanner: true,
 };
 
+const CART_STORAGE_KEY = 'beton_estimate_cart_v1';
+
 export default function App() {
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [equipment, setEquipment] = useState<EquipmentItem[]>([]);
@@ -55,22 +64,51 @@ export default function App() {
     normalizeRoute(window.location.pathname)
   );
 
-  // Состояние модального окна заявки (заказ смеси, спецтехники или расчета калькулятора)
+  // Состояние Сборной заявки (Корзины-сметы без онлайн-оплаты)
+  const [cartItems, setCartItems] = useState<EstimateCartItem[]>(() => {
+    try {
+      const raw = localStorage.getItem(CART_STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as EstimateCartItem[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
+    } catch {
+      // ignore storage errors
+    }
+  }, [cartItems]);
+
+  // Состояние модального окна заявки
   const [leadModalOpen, setLeadModalOpen] = useState<boolean>(false);
   const [leadSource, setLeadSource] = useState<LeadSource>('contact');
   const [prefillItem, setPrefillItem] = useState<string | undefined>(undefined);
   const [prefillCalculation, setPrefillCalculation] = useState<string | undefined>(undefined);
+  const [clearCartOnSuccess, setClearCartOnSuccess] = useState<boolean>(false);
 
   // Состояние модального окна с юридическими документами (152-ФЗ, Оферта, Cookie)
   const [legalDoc, setLegalDoc] = useState<'privacy' | 'consent' | 'offer' | null>(null);
 
-  const navigateTo = useCallback((route: AppRoute) => {
+  const navigateTo = useCallback((route: AppRoute, sectionId?: string) => {
     setCurrentRoute(route);
     if (window.location.pathname !== route) {
       window.history.pushState({}, '', route);
     }
     applyClientSeoMeta(route);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    if (sectionId) {
+      setTimeout(() => {
+        const el = document.getElementById(sectionId);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 60);
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   }, []);
 
   useEffect(() => {
@@ -106,15 +144,73 @@ export default function App() {
     loadCatalogData();
   }, [loadCatalogData]);
 
+  // Обработчики Сборной заявки (Корзины-сметы)
+  const handleAddToCart = useCallback((newItem: EstimateCartItem) => {
+    setCartItems((prev) => {
+      const existingIdx = prev.findIndex((i) => i.id === newItem.id);
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          quantity: newItem.quantity,
+          unitPrice: newItem.unitPrice,
+        };
+        return updated;
+      }
+      return [...prev, newItem];
+    });
+  }, []);
+
+  const handleUpdateCartQuantity = useCallback((id: string, quantity: number) => {
+    setCartItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, quantity } : item))
+    );
+  }, []);
+
+  const handleRemoveCartItem = useCallback((id: string) => {
+    setCartItems((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
+  const handleClearCart = useCallback(() => {
+    setCartItems([]);
+  }, []);
+
   const handleOpenLeadModal = (
     source: LeadSource,
     selectedItem?: string,
-    calculationSummary?: string
+    calculationSummary?: string,
+    shouldClearCart = false
   ) => {
     setLeadSource(source);
     setPrefillItem(selectedItem);
     setPrefillCalculation(calculationSummary);
+    setClearCartOnSuccess(shouldClearCart);
     setLeadModalOpen(true);
+  };
+
+  // Передача всей набранной Сметы в стандартную форму обратной связи
+  const handleOpenEstimateCheckout = () => {
+    if (cartItems.length === 0) return;
+    const totalSum = cartItems.reduce(
+      (acc, item) => acc + Math.round(item.unitPrice * item.quantity),
+      0
+    );
+    const lines = cartItems.map(
+      (item, idx) =>
+        `${idx + 1}) ${item.title}: ${item.quantity} ${item.unit} × ${item.unitPrice.toLocaleString(
+          'ru-RU'
+        )} ₽ = ${Math.round(item.unitPrice * item.quantity).toLocaleString('ru-RU')} ₽`
+    );
+    const summaryText = `Сборная смета (${cartItems.length} поз.): ${lines.join(
+      '; '
+    )}. Итого ориентировочно: ~${totalSum.toLocaleString('ru-RU')} ₽`;
+
+    handleOpenLeadModal(
+      'catalog',
+      `Сборная заявка (${cartItems.length} поз. на ~${totalSum.toLocaleString('ru-RU')} ₽)`,
+      summaryText,
+      true
+    );
   };
 
   const activeSeoMeta = SEO_ROUTES[currentRoute] || SEO_ROUTES['/'];
@@ -124,8 +220,10 @@ export default function App() {
       <Header
         settings={settings}
         currentRoute={currentRoute}
+        cartCount={cartItems.length}
         onNavigate={navigateTo}
         onOpenLeadModal={(src, item) => handleOpenLeadModal(src, item)}
+        onOpenEstimateCheckout={handleOpenEstimateCheckout}
       />
 
       {currentRoute === '/admin' ? (
@@ -137,40 +235,11 @@ export default function App() {
         </main>
       ) : (
         <main className="flex-1">
-          {/* Хлебные крошки и SEO-шапка для внутренних посадочных страниц */}
-          {currentRoute !== '/' && (
-            <section className="bg-white border-b border-slate-200 py-8">
-              <div className="max-w-[1200px] mx-auto px-6">
-                <nav className="text-xs text-slate-500 mb-3 flex items-center gap-2">
-                  <a
-                    href="/"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      navigateTo('/');
-                    }}
-                    className="hover:text-slate-900 underline underline-offset-4"
-                  >
-                    Главная
-                  </a>
-                  <span aria-hidden="true">/</span>
-                  <span className="text-slate-900 font-medium">{activeSeoMeta.label}</span>
-                </nav>
-                <h1 className="text-2xl md:text-4xl font-bold text-slate-900 font-display tracking-tight">
-                  {activeSeoMeta.h1}
-                </h1>
-                <p className="text-sm text-slate-600 mt-2 max-w-2xl">
-                  {activeSeoMeta.subtitle}
-                </p>
-              </div>
-            </section>
-          )}
-
-          {/* МАРШРУТ 1: ГЛАВНАЯ СТРАНИЦА (Конверсионный лендинг + обзор всех разделов) */}
+          {/* МАРШРУТ 1: ГЛАВНАЯ СТРАНИЦА (Единый каталог: Бетон + Растворы + ФБС + Спецтехника, Калькулятор, Прайс, Доставка) */}
           {currentRoute === '/' && (
             <>
               <Hero
                 settings={settings}
-                onNavigate={navigateTo}
                 onOpenLeadModal={(src, item) => handleOpenLeadModal(src, item)}
               />
 
@@ -182,20 +251,19 @@ export default function App() {
                 <>
                   <CatalogSection
                     products={products}
+                    equipment={equipment}
                     settings={settings}
+                    cartItems={cartItems}
+                    onAddToCart={handleAddToCart}
                     onOrderProduct={(itemTitle) => handleOpenLeadModal('catalog', itemTitle)}
                     onNavigate={navigateTo}
-                  />
-
-                  <EquipmentSection
-                    equipment={equipment}
-                    onOrderEquipment={(eqTitle) => handleOpenLeadModal('equipment', eqTitle)}
                   />
 
                   <CalculatorSection
                     products={products}
                     equipment={equipment}
                     settings={settings}
+                    onAddToCart={handleAddToCart}
                     onSubmitCalculation={(title, summary) =>
                       handleOpenLeadModal('calculator', title, summary)
                     }
@@ -216,67 +284,39 @@ export default function App() {
             </>
           )}
 
-          {/* МАРШРУТ 2: СТРАНИЦА «ТОВАРНЫЙ БЕТОН» (/beton) */}
-          {currentRoute === '/beton' && (
-            <>
-              <CatalogSection
-                products={products}
-                settings={settings}
-                fixedCategory="concrete"
-                sectionTitle="Марки товарного бетона М100–М400 с доставкой по Ульяновску"
-                sectionSubtitle="Отгружаем бетонные смеси на гравийном и гранитном щебне по ГОСТ 7473-2010 и ГОСТ 7473-2026 без недолива. Подача миксера в любой район Ульяновска за 30–60 минут."
-                onOrderProduct={(itemTitle) => handleOpenLeadModal('catalog', itemTitle)}
-              />
-              <PriceTableSection
-                products={products.filter((p) => p.category === 'concrete')}
-                settings={settings}
-                onOrderProduct={(itemTitle) => handleOpenLeadModal('catalog', itemTitle)}
-              />
-              <CalculatorSection
-                products={products}
-                equipment={equipment}
-                settings={settings}
-                onSubmitCalculation={(title, summary) =>
-                  handleOpenLeadModal('calculator', title, summary)
-                }
-              />
-            </>
-          )}
-
-          {/* МАРШРУТ 3: СТРАНИЦА «СТРОИТЕЛЬНЫЕ РАСТВОРЫ» (/rastvory) */}
-          {currentRoute === '/rastvory' && (
-            <>
-              <CatalogSection
-                products={products}
-                settings={settings}
-                fixedCategory="mortar"
-                sectionTitle="Кладочные, монтажные и штукатурные растворы в Ульяновске"
-                sectionSubtitle="Готовые пластичные цементно-песчаные смеси М100, М150 и М200 на мытом сеяном песке без глины с доставкой миксерами с РБУ мощностью 60 м³/час."
-                onOrderProduct={(itemTitle) => handleOpenLeadModal('catalog', itemTitle)}
-              />
-              <PriceTableSection
-                products={products.filter((p) => p.category === 'mortar')}
-                settings={settings}
-                onOrderProduct={(itemTitle) => handleOpenLeadModal('catalog', itemTitle)}
-              />
-              <CalculatorSection
-                products={products}
-                equipment={equipment}
-                settings={settings}
-                onSubmitCalculation={(title, summary) =>
-                  handleOpenLeadModal('calculator', title, summary)
-                }
-              />
-            </>
-          )}
-
-          {/* МАРШРУТ 4: СТРАНИЦА «АРЕНДА СПЕЦТЕХНИКИ» (/spectehnika) */}
+          {/* МАРШРУТ 2: ОТДЕЛЬНАЯ SEO-СТРАНИЦА АРЕНДЫ СПЕЦТЕХНИКИ В УЛЬЯНОВСКЕ (/spectehnika) */}
           {currentRoute === '/spectehnika' && (
             <>
+              <section className="bg-white bg-industrial-grid border-b border-slate-200 py-10">
+                <div className="max-w-[1200px] mx-auto px-6">
+                  <nav className="text-xs text-slate-500 mb-3 flex items-center gap-2">
+                    <a
+                      href="/"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        navigateTo('/');
+                      }}
+                      className="hover:text-slate-900 underline underline-offset-4"
+                    >
+                      Главная (Бетон, Растворы, ФБС)
+                    </a>
+                    <span aria-hidden="true">/</span>
+                    <span className="text-slate-900 font-medium">{activeSeoMeta.label}</span>
+                  </nav>
+                  <h1 className="heading-hero text-slate-900">{activeSeoMeta.h1}</h1>
+                  <p className="text-sm text-slate-600 mt-3 max-w-2xl leading-relaxed">
+                    {activeSeoMeta.subtitle}
+                  </p>
+                </div>
+              </section>
+
               <EquipmentSection
                 equipment={equipment}
+                cartItems={cartItems}
+                onAddToCart={handleAddToCart}
                 onOrderEquipment={(eqTitle) => handleOpenLeadModal('equipment', eqTitle)}
               />
+
               <QualityAndDeliverySection
                 settings={settings}
                 onOpenLeadModal={(src, item) => handleOpenLeadModal(src, item)}
@@ -284,45 +324,19 @@ export default function App() {
             </>
           )}
 
-          {/* МАРШРУТ 5: СТРАНИЦА «КАЛЬКУЛЯТОР И ПРАЙС-ЛИСТ» (/calculator) */}
-          {currentRoute === '/calculator' && (
-            <>
-              <CalculatorSection
-                products={products}
-                equipment={equipment}
-                settings={settings}
-                onSubmitCalculation={(title, summary) =>
-                  handleOpenLeadModal('calculator', title, summary)
-                }
-              />
-              <PriceTableSection
-                products={products}
-                settings={settings}
-                onOrderProduct={(itemTitle) => handleOpenLeadModal('catalog', itemTitle)}
-              />
-            </>
-          )}
-
-          {/* МАРШРУТ 6: СТРАНИЦА «ДОСТАВКА, ЛАБОРАТОРИЯ И ГОСТ» (/dostavka) */}
-          {currentRoute === '/dostavka' && (
-            <QualityAndDeliverySection
-              settings={settings}
-              onOpenLeadModal={(src, item) => handleOpenLeadModal(src, item)}
-            />
-          )}
-
-          {/* Сквозная секция обратной связи внизу каждой страницы */}
+          {/* Сквозная секция обратной связи внизу страницы */}
           <section id="contact" className="py-16 bg-slate-100">
             <div className="max-w-[1200px] mx-auto px-6">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
                 <div className="lg:col-span-5 space-y-4">
-                  <h2 className="text-2xl md:text-3xl font-bold text-slate-900 font-display tracking-tight">
-                    Закажите расчет сметы и подачу миксера напрямую у диспетчера РБУ
+                  <h2 className="heading-section text-slate-900">
+                    Заявка на расчет и подачу с РБУ в Ульяновске
                   </h2>
                   <p className="text-sm text-slate-600 leading-relaxed">
-                    Оставьте номер телефона — технолог-диспетчер перезвонит вам, поможет подобрать
-                    марку под проектную нагрузку, проверит подъездные пути на вашем объекте в
-                    Ульяновске или области и забронирует время подачи (по городу {settings.cityDeliveryTime}).
+                    Оставьте номер телефона — диспетчер перезвонит вам, поможет подобрать марку
+                    бетона, раствор, блоки ФБС или спецтехнику, проверит подъездные пути на вашем
+                    объекте в Ульяновске и забронирует время подачи (по городу{' '}
+                    {settings.cityDeliveryTime}).
                   </p>
 
                   <div className="pt-2 space-y-2 text-sm text-slate-700">
@@ -365,6 +379,17 @@ export default function App() {
         onOpenLegalModal={(doc) => setLegalDoc(doc)}
       />
 
+      {/* Плавающая панель Сборной заявки (Корзины-сметы) */}
+      {currentRoute !== '/admin' && (
+        <EstimateCartBar
+          items={cartItems}
+          onUpdateQuantity={handleUpdateCartQuantity}
+          onRemoveItem={handleRemoveCartItem}
+          onClearCart={handleClearCart}
+          onSubmitEstimate={handleOpenEstimateCheckout}
+        />
+      )}
+
       {/* Модальное окно оформления заявки */}
       {leadModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -387,7 +412,12 @@ export default function App() {
               source={leadSource}
               selectedItem={prefillItem}
               calculationSummary={prefillCalculation}
-              onSuccess={() => setLeadModalOpen(false)}
+              onSuccess={() => {
+                if (clearCartOnSuccess) {
+                  setCartItems([]);
+                }
+                setLeadModalOpen(false);
+              }}
               onOpenLegalModal={(doc) => setLegalDoc(doc)}
             />
           </div>
